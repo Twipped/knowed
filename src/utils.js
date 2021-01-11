@@ -8,7 +8,20 @@ export const htmlEscape = (input) => input
 	.replace(/"/g, '&quot;')
 	.replace(/'/g, '&#39;')
 	.replace(/</g, '&lt;')
-	.replace(/>/g, '&gt;');
+	.replace(/>/g, '&gt;')
+;
+
+export function stripIndent (input) {
+	if (Array.isArray(input)) return input.map(stripIndent).join('');
+	const match = input.match(/^[^\S\n]*(?=\S)/gm);
+	const indent = match && Math.min(...match.map((el) => el.length));
+	if (indent) {
+		const regexp = new RegExp(`^.{${indent}}`, 'gm');
+		input = input.replace(regexp, '');
+	}
+
+	return input;
+}
 
 export function wtf (msg, info) {
 	if (info) console.error(info); // eslint-disable-line no-console
@@ -288,6 +301,14 @@ export function ucsentence (input) {
 
 export function ucwords (input) {
 	return input.replace(/\w\S*/g, (word) => word.charAt(0).toUpperCase() + word.substr(1));
+}
+
+export function pall (...promises) {
+	return Promise.all(promises.flat());
+}
+
+export function clone (input) {
+	return merge({}, input);
 }
 
 export function merge (...sources) {
@@ -886,6 +907,37 @@ export function filter (collection, predicate) {
 	throw new Error('filter can not be applied to objects or maps, perhaps you meant to use omit?');
 }
 
+export function sift (collection, predicate) {
+	predicate = iteratee(predicate);
+	const result = [];
+
+	if (isArray(collection)) {
+		for (const [ i, value ] of collection.entries()) {
+			const res = predicate(value, i, i);
+			if (res) result.push(res);
+		}
+	} else if (isSet(collection)) {
+		let i = 0;
+		for (const value of collection) {
+			const res = predicate(value, i, i++);
+			if (res) result.push(res);
+		}
+	} else if (isMap(collection)) {
+		let i = 0;
+		for (const [ key, value ] of collection.entries()) {
+			const res = predicate(value, key, i++);
+			if (res) result.push(res);
+		}
+	} else if (isObject(collection)) {
+		let i = 0;
+		for (const [ key, value ] of Object.entries(collection)) {
+			const res = predicate(value, key, i++);
+			if (res) result.push(res);
+		}
+	}
+
+	return result;
+}
 
 export function find (collection, predicate) {
 	predicate = iteratee(predicate);
@@ -1325,8 +1377,4 @@ export function defer (fn) {
 export function timeout (fn, time) {
 	const handle = setTimeout(fn, time);
 	return () => clearTimeout(handle);
-}
-
-export function pall (...ps) {
-	return Promise.all(ps);
 }

@@ -1,24 +1,28 @@
 
-import { isUndefinedOrNull, isString, merge, isArray, isObject, isArrayOf } from './utils';
+import { isString, isObject, isArrayOf, pall, map, intersect } from './utils';
 import {
 	hashForRootKey,
 } from './shared';
 import Soul, { isSoul, isArrayOfSouls } from './soul';
 
+export const isQuery = Query.isQuery = (input) => input instanceof Query;
+export const isArrayOfQueries = Query.isArrayOfQueries = isArrayOf(isQuery);
+
 const SOULS = 'SOULS';
 const ROOTKEY = 'ROOTKEY';
-const TRAVEL_DOWN = 'TRAVEL_DOWN';
-const TRAVEL_UP = 'TRAVEL_UP';
-const MAKE_LINK = 'MAKE_LINK';
+const TRAVEL_TO_CHILD = 'TRAVEL_TO_CHILD';
+const TRAVEL_TO_PARENT = 'TRAVEL_TO_PARENT';
+const LINK = 'LINK';
+const UNLINK = 'UNLINK';
+const UNLINK_ALL = 'UNLINK_ALL';
 const PUT_DATA = 'PUT_DATA';
-const SET_ADD = 'SET_ADD';
-const SET_DELETE = 'SET_DELETE';
 const CONCAT = 'CONCAT';
 
 const OPS = {
 	async SOULS ({ souls }, soulsToInclude) {
-
+		return souls.concat(soulsToInclude);
 	},
+
 	async ROOTKEY ({ db, create }, key, type) {
 		const soulid = await db.store.valGet(hashForRootKey(key));
 		if (!soulid && !create) return [];
@@ -26,47 +30,53 @@ const OPS = {
 		const soul = new Soul(db, soulid || type);
 		await soul.ensure();
 		if (soul.fresh) {
+			// this is a new soul, so we need to create the root level key-ref to it.
 			await db.store.valPut(hashForRootKey(key), soul.id);
 		}
 		return [ soul ];
 	},
 
-	async CONCAT ({ souls: currentSouls }, value) {
-		if (isQuery(value)) value = await value.resolve();
-		if (!isArray(value) && isSoul(value)) value = [ value ];
-
-		// at this point we should always have an array of souls as the input.
-		if (!isArrayOfSouls(value)) throw new TypeError('Query concat input was not a collection of souls.');
-
-		return currentSouls.concat(value);
+	async CONCAT ({ souls: currentSouls }, query) {
+		await query.resolve();
+		return currentSouls.concat(query.souls);
 	},
-	async TRAVEL_DOWN ({ souls }, key, type) {
+
+	async TRAVEL_TO_CHILD ({ souls }, key, type) {
 		const proms = souls.map((soul) => soul.traverse(key, true, type));
 		return (await Promise.all(proms)).flat();
 	},
-	async TRAVEL_UP ({ souls }, key) {
+	async TRAVEL_TO_PARENT ({ souls }, key) {
 		const proms = souls.map((soul) => soul.traverse(key, false));
 		return (await Promise.all(proms)).flat();
 	},
-	async MAKE_LINK ({ souls }, key, soulsToLink, overwrite) {
-		const proms = souls.map(async (soul) => {
+	async LINK ({ souls }, key, soulsToLink, overwrite) {
+		await Promise.all(souls.map(async (soul) => {
 			if (overwrite) await soul.unlinkAll(key);
 			for (const s of soulsToLink) {
 				await soul.link(key, s);
 			}
 			return souls;
-		});
-		return (await Promise.all(proms)).flat();
+		}));
+		return souls;
+	},
+	async UNLINK ({ souls }, key, soulsToUnlink) {
+		await Promise.all(souls.map(
+			(soul) => Promise.all(
+				soulsToUnlink.map((s) => soul.unlink(key, s)),
+			),
+		));
+		return souls;
+	},
+	async UNLINK_ALL ({ souls }, key) {
+		await Promise.all(souls.map(async (soul) => {
+			await soul.unlinkAll(key);
+			return souls;
+		}));
+		return souls;
 	},
 	async PUT_DATA ({ souls }, data, overwrite) {
 		const proms = souls.map((soul) => soul.put(data, overwrite));
 		return (await Promise.all(proms)).flat();
-	},
-	async SET_ADD ({ souls }, soulsToAdd, overwrite) {
-
-	},
-	async SET_DELETE ({ souls }, soulsToRemove) {
-
 	},
 };
 
@@ -80,30 +90,41 @@ export default class Query {
 		this.traversal = travels;
 	}
 
-	get length () {
-		return this.souls.length;
+	get empty () {
+		return !this.souls.length && !this.traversal.length;
 	}
 
-	down (key, type) {
-		const q = new Query(this.db, [ ...this.traversal, [ TRAVEL_DOWN, key, type ] ],	this);
+	toChild (key, type) {
+		this.assert();
+		const q = new Query(this.db, [ ...this.traversal, [ TRAVEL_TO_CHILD, key, type ] ],	this);
 		this.relatives.add(q);
 		return q;
 	}
 
-	up (key) {
-		const q = new Query(this.db, [ ...this.traversal, [ TRAVEL_UP, key ] ], this);
+	toParent (key) {
+		this.assert();
+		const q = new Query(this.db, [ ...this.traversal, [ TRAVEL_TO_PARENT, key ] ], this);
 		this.relatives.add(q);
 		return q;
 	}
+
+	down (...args) { return this.toChild(...args); }
+	up (...args) { return this.toParent(...args); }
 
 	add (value, overwrite = false) {
-		if (!(value instanceof Query || value instanceof Soul)) {
-			throw new Error('Query.add() only accepts another query or a Soul object.');
-		}
+		return this.link('', value, overwrite);
+	}
 
-		this.traversal.push([ SET_ADD, value, overwrite ]);
-		this.relatives.add(value);
-		return this;
+	remove (value) {
+		return this.unlink('', value);
+	}
+
+	clear () {
+		return this.unlinkAll('');
+	}
+
+	contents () {
+		return this.toChild('');
 	}
 
 	put (value, overwrite = false) {
@@ -117,7 +138,7 @@ export default class Query {
 
 	link (key, value, overwrite = false) {
 		if (!isString(key)) throw new TypeError('Expected a string key to identify the link.');
-		if (value instanceof Soul) {
+		if (isSoul(value)) {
 			value = new Query(this.db, [ SOULS, [ value ] ], this);
 		}
 		if (isArrayOfSouls(value)) {
@@ -127,20 +148,41 @@ export default class Query {
 			value.forEach((q) => this.link(key, q, overwrite));
 			return;
 		}
-		if (!(value instanceof Query)) {
+		if (!(isQuery(value))) {
 			throw new Error('Query.link() only accepts another Query object, Soul object, or an array of Query or Soul objects.');
 		}
 
 		this.relatives.add(value);
-		this.traversal.push([ MAKE_LINK, key, value, overwrite ]);
+		this.traversal.push([ LINK, key, value, overwrite ]);
 		return this;
 	}
 
 	unlink (key, value = null) {
 		if (!isString(key)) throw new TypeError('Expected a string key to identify the link.');
-		if (value && !(value instanceof Query || value instanceof Soul)) {
-			throw new Error('Query.unlink() only accepts another query or a Soul object.');
+		if (isSoul(value)) {
+			value = new Query(this.db, [ SOULS, [ value ] ], this);
 		}
+		if (isArrayOfSouls(value)) {
+			value = new Query(this.db, [ SOULS, value ], this);
+		}
+		if (isArrayOfQueries(value)) {
+			value.forEach((q) => this.unlink(key, q));
+			return;
+		}
+		if (!(isQuery(value))) {
+			throw new Error('Query.link() only accepts another Query object, Soul object, or an array of Query or Soul objects.');
+		}
+
+		this.relatives.add(value);
+		this.traversal.push([ UNLINK, key, value ]);
+
+		return this;
+	}
+
+	unlinkAll (key) {
+		this.traversal.push([ UNLINK_ALL, key ]);
+
+		return this;
 	}
 
 	concat (...queries) {
@@ -167,19 +209,39 @@ export default class Query {
 		this.traversal = [];
 	}
 
+	async has (query) {
+		await pall(
+			this.resolve(),
+			query.resolve(),
+		);
+
+		const left  = map(this.souls, 'id');
+		const right = map(query.souls, 'id');
+		return intersect(left, right).length === right.length;
+	}
+
+	async map (fn) {
+		return Promise.all(this.souls.map(fn));
+	}
+
 	async get (one = false) {
 		await this.resolve();
 		if (!this.souls || !this.souls.length) return one ? null : [];
-		if (one) return this.souls[0] ? this.souls[0].get() : null;
-		return Promise.all(this.souls.map((s) => s.get()));
+		if (one) return this.souls.length ? this.souls[0].get() : null;
+		return this.map((s) => s.get());
 	}
 
 	then (...args) {
-		return this.get(true).then(...args);
+		return this.resolve()
+			.then(() => this.map((s) => s.ensure()))
+			.then(...args);
+	}
+
+	async delete () {
+		await this.resolve();
+		await Promise.all(this.souls.map((s) => s.delete()));
+		this.souls = [];
 	}
 }
 
 Query.create = (db, key, type) => new Query(db, null, [ [ ROOTKEY, key, type ] ]);
-
-export const isQuery = Query.isQuery = (input) => input instanceof Query;
-export const isArrayOfQueries = Query.isArrayOfQueries = isArrayOf(isQuery);

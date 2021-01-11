@@ -5,6 +5,7 @@ import {
 	merge,
 	pall,
 	isArrayOf,
+	isUndefinedOrNull,
 } from './utils';
 
 import {
@@ -99,7 +100,7 @@ export default class Soul {
 
 	async get () {
 		await this.ensure();
-		return merge(this.data); // this copies the full tree
+		return merge({}, this.data); // this copies the full tree
 	}
 
 	then (...args) {
@@ -142,13 +143,13 @@ export default class Soul {
 		return this;
 	}
 
-	async unlinkAll (key, up = true) {
+	async unlinkAll (key, fromChild = true) {
 		await this.ensure();
-		const links = sift(this.links, (hash) => {
+		const links = isUndefinedOrNull(key) ? Array.from(this.links) : sift(this.links, (hash) => {
 			const link = parseLink(hash);
 			const { dir, key: k } = link;
 			if (key !== k) return false;
-			return (up === null || (up ? dir === '>' : dir === '<')) && link;
+			return (fromChild === null || (fromChild ? dir === '>' : dir === '<')) && link;
 		});
 
 		const proms = links.map(async ({ id, outgoing }) => {
@@ -167,8 +168,8 @@ export default class Soul {
 		return this;
 	}
 
-	async traverse (key, up = true, createType = null) {
-		const direction = up ? '>' : '<';
+	async traverse (key, toChild = true, createType = null) {
+		const direction = toChild ? '>' : '<';
 
 		await this.ensure();
 		const ids = sift(this.links, (hash) => {
@@ -178,10 +179,10 @@ export default class Soul {
 
 		if (ids.length) return ids.map((id) => new Soul(this.db, id));
 
-		if (createType && !up) throw new Error('Cannot create new parent branch nodes on traversal');
+		if (createType && !toChild) throw new Error('Cannot create new parent branch nodes on traversal');
 		// Attempting to create parents on traversal would result in extraneous souls.
 
-		if (up && createType) {
+		if (toChild && createType) {
 			const soul = new Soul(this.id, createType);
 			await soul.ensure();
 			await this.link(soul, key);
