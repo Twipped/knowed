@@ -13,5 +13,6 @@
             "allowModules": ["date-fns"]
         }],
         "no-negated-condition": 0,
+        "no-unused-expressions": ["error", { "allowShortCircuit": true }]
 	}
 }
