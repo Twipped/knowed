@@ -1,247 +1,269 @@
 
-import { isString, isObject, isArrayOf, pall, map, intersect } from './utils';
+import { isString, isObject, isArrayOf, pall, pmap, intersect, assert } from './utils';
 import {
-	hashForRootKey,
-} from './shared';
-import Soul, { isSoul, isArrayOfSouls } from './soul';
+	isSoulId,
+	isArrayOfSoulIds,
+	querygen,
+} from './ids';
+import Operations, {
+	QUERY,
+	SOULS,
+	FROM_ALIAS,
+	SET_ALIAS,
+	REMOVE_ALIAS,
+	TRAVEL_IN_DIRECTION,
+	TRAVEL_TO_KEY,
+	TRAVEL_FROM_KEY,
+	BIND,
+	UNBIND,
+	UNBIND_BY_KEY,
+	UPDATE_META,
+	PUT_DATA,
+	CLEAR_DATA,
+	DELETE,
+} from './ops';
 
-export const isQuery = Query.isQuery = (input) => input instanceof Query;
-export const isArrayOfQueries = Query.isArrayOfQueries = isArrayOf(isQuery);
+import { isStore, DIRECTION, isValidDirection } from './stores/abstract';
 
-const SOULS = 'SOULS';
-const ROOTKEY = 'ROOTKEY';
-const TRAVEL_TO_CHILD = 'TRAVEL_TO_CHILD';
-const TRAVEL_TO_PARENT = 'TRAVEL_TO_PARENT';
-const LINK = 'LINK';
-const UNLINK = 'UNLINK';
-const UNLINK_ALL = 'UNLINK_ALL';
-const PUT_DATA = 'PUT_DATA';
-const CONCAT = 'CONCAT';
+export const isQuery = (input) => input instanceof Query;
+export const isArrayOfQueries = isArrayOf(isQuery);
 
-const OPS = {
-	async SOULS ({ souls }, soulsToInclude) {
-		return souls.concat(soulsToInclude);
-	},
 
-	async ROOTKEY ({ db, create }, key, type) {
-		const soulid = await db.store.valGet(hashForRootKey(key));
-		if (!soulid && !create) return [];
-
-		const soul = new Soul(db, soulid || type);
-		await soul.ensure();
-		if (soul.fresh) {
-			// this is a new soul, so we need to create the root level key-ref to it.
-			await db.store.valPut(hashForRootKey(key), soul.id);
-		}
-		return [ soul ];
-	},
-
-	async CONCAT ({ souls: currentSouls }, query) {
-		await query.resolve();
-		return currentSouls.concat(query.souls);
-	},
-
-	async TRAVEL_TO_CHILD ({ souls }, key, type) {
-		const proms = souls.map((soul) => soul.traverse(key, true, type));
-		return (await Promise.all(proms)).flat();
-	},
-	async TRAVEL_TO_PARENT ({ souls }, key) {
-		const proms = souls.map((soul) => soul.traverse(key, false));
-		return (await Promise.all(proms)).flat();
-	},
-	async LINK ({ souls }, key, soulsToLink, overwrite) {
-		await Promise.all(souls.map(async (soul) => {
-			if (overwrite) await soul.unlinkAll(key);
-			for (const s of soulsToLink) {
-				await soul.link(key, s);
-			}
-			return souls;
-		}));
-		return souls;
-	},
-	async UNLINK ({ souls }, key, soulsToUnlink) {
-		await Promise.all(souls.map(
-			(soul) => Promise.all(
-				soulsToUnlink.map((s) => soul.unlink(key, s)),
-			),
-		));
-		return souls;
-	},
-	async UNLINK_ALL ({ souls }, key) {
-		await Promise.all(souls.map(async (soul) => {
-			await soul.unlinkAll(key);
-			return souls;
-		}));
-		return souls;
-	},
-	async PUT_DATA ({ souls }, data, overwrite) {
-		const proms = souls.map((soul) => soul.put(data, overwrite));
-		return (await Promise.all(proms)).flat();
-	},
-};
 
 export default class Query {
 
-	constructor (db, travels, parent = null) {
-		this.db = db;
-		this.souls = [];
-		this.parent = parent;
-		this.relatives = parent ? new Set([ parent ]) : new Set();
-		this.traversal = travels;
+	constructor (transaction, travels = []) {
+		if (!transaction) throw new Error('Must pass a transaction at Query initialization');
+		this.transaction = transaction;
+		this.traversal = [ ...travels ];
+		this.qid = querygen();
+
+		if (this.traversal[0] && this.traversal[0][0] === SOULS) {
+			const [ , souls ] = this.traversal.shift();
+			this.souls = souls;
+		} else {
+			this.souls = [];
+		}
 	}
 
 	get empty () {
 		return !this.souls.length && !this.traversal.length;
 	}
 
-	toChild (key, type) {
-		this.assert();
-		const q = new Query(this.db, [ ...this.traversal, [ TRAVEL_TO_CHILD, key, type ] ],	this);
-		this.relatives.add(q);
-		return q;
+	get length () {
+		return this.souls.length;
 	}
 
-	toParent (key) {
-		this.assert();
-		const q = new Query(this.db, [ ...this.traversal, [ TRAVEL_TO_PARENT, key ] ], this);
-		this.relatives.add(q);
-		return q;
+	alias (alias) {
+		assert(alias && isString(alias), 'Alias must be a non-empty string');
+		this.traversal.push( [ SET_ALIAS, alias ] );
+		return this;
 	}
 
-	down (...args) { return this.toChild(...args); }
-	up (...args) { return this.toParent(...args); }
-
-	add (value, overwrite = false) {
-		return this.link('', value, overwrite);
+	dealias (alias) {
+		assert(alias && isString(alias), 'Alias must be a non-empty string');
+		this.traversal.push( [ REMOVE_ALIAS, alias ] );
+		return this;
 	}
 
-	remove (value) {
-		return this.unlink('', value);
+	to (direction, createIfMissing = true) {
+		return new Query(this.transaction, [ [ QUERY, this ], [ TRAVEL_IN_DIRECTION, direction, createIfMissing ] ]);
+	}
+
+	key (key, directionForCreation = DIRECTION.RIGHT) {
+		return new Query(this.transaction, [ [ QUERY, this ], [ TRAVEL_TO_KEY, key, directionForCreation ] ]);
+	}
+
+	keyParent (key, directionForCreation = DIRECTION.LEFT) {
+		return new Query(this.transaction, [ [ QUERY, this ], [ TRAVEL_FROM_KEY, key, directionForCreation ] ]);
+	}
+
+	down (...args) { return this.to(DIRECTION.UP, ...args); }
+	up (...args) { return this.to(DIRECTION.DOWN, ...args); }
+	left (...args) { return this.to(DIRECTION.LEFT, ...args); }
+	right (...args) { return this.to(DIRECTION.RIGHT, ...args); }
+
+	set (key, value) {
+		if (isString(key) && value !== undefined) {
+			key = { [key]: value };
+		}
+
+		this.traversal.push( [ UPDATE_META, key ]);
+		return this;
+	}
+
+	put (value, update = true) {
+		assert(isObject(value, true), 'Query.put() only accepts plain objects for data to attach.');
+
+		this.traversal.push( [ PUT_DATA, { ...value }, update ] );
+		return this;
 	}
 
 	clear () {
-		return this.unlinkAll('');
-	}
-
-	contents () {
-		return this.toChild('');
-	}
-
-	put (value, overwrite = false) {
-		if (!isObject(value, true)) {
-			throw new Error('Query.put() only accepts plain objects for data to attach.');
-		}
-
-		this.traversal.push( [ PUT_DATA, { ...value }, overwrite ] );
+		this.traversal.push( [ CLEAR_DATA ] );
 		return this;
 	}
 
-	link (key, value, overwrite = false) {
-		if (!isString(key)) throw new TypeError('Expected a string key to identify the link.');
-		if (isSoul(value)) {
-			value = new Query(this.db, [ SOULS, [ value ] ], this);
+	bind (direction, queryOrSouls, key) {
+		assert(isValidDirection(direction), 'Expected LEFT, RIGHT, UP or DOWN as a direction.');
+		assert(!key || isString(key), 'Key must either be falsy or a non-empty string');
+
+		if (isSoulId(queryOrSouls)) {
+			queryOrSouls = new Query(this.transaction, [ SOULS, [ queryOrSouls ] ]);
 		}
-		if (isArrayOfSouls(value)) {
-			value = new Query(this.db, [ SOULS, value ], this);
+		if (isArrayOfSoulIds(queryOrSouls)) {
+			queryOrSouls = new Query(this.transaction, [ SOULS, queryOrSouls ]);
 		}
-		if (isArrayOfQueries(value)) {
-			value.forEach((q) => this.link(key, q, overwrite));
-			return;
-		}
-		if (!(isQuery(value))) {
-			throw new Error('Query.link() only accepts another Query object, Soul object, or an array of Query or Soul objects.');
+		if (isArrayOfQueries(queryOrSouls)) {
+			queryOrSouls.forEach((q) => this.bind(direction, q));
+			return this;
 		}
 
-		this.relatives.add(value);
-		this.traversal.push([ LINK, key, value, overwrite ]);
+		assert(isQuery(queryOrSouls), 'Query.bind() only accepts another Query object, Soul ID, or an array of Queries or Souls IDs');
+
+		this.traversal.push([ BIND, queryOrSouls, direction, key || null ]);
 		return this;
 	}
 
-	unlink (key, value = null) {
-		if (!isString(key)) throw new TypeError('Expected a string key to identify the link.');
-		if (isSoul(value)) {
-			value = new Query(this.db, [ SOULS, [ value ] ], this);
+	unbind (direction, queryOrSouls = null) {
+		assert(isValidDirection(direction), 'Expected LEFT, RIGHT, UP or DOWN as a direction.');
+
+		if (isSoulId(queryOrSouls)) {
+			queryOrSouls = new Query(this.transaction, [ SOULS, [ queryOrSouls ] ]);
 		}
-		if (isArrayOfSouls(value)) {
-			value = new Query(this.db, [ SOULS, value ], this);
+		if (isArrayOfSoulIds(queryOrSouls)) {
+			queryOrSouls = new Query(this.transaction, [ SOULS, queryOrSouls ]);
 		}
-		if (isArrayOfQueries(value)) {
-			value.forEach((q) => this.unlink(key, q));
-			return;
-		}
-		if (!(isQuery(value))) {
-			throw new Error('Query.link() only accepts another Query object, Soul object, or an array of Query or Soul objects.');
+		if (isArrayOfQueries(queryOrSouls)) {
+			queryOrSouls.forEach((q) => this.unbind(direction, q));
+			return this;
 		}
 
-		this.relatives.add(value);
-		this.traversal.push([ UNLINK, key, value ]);
+		assert(isQuery(queryOrSouls), 'Query.unbind() only accepts another Query object, Soul ID, or an array of Queries or Souls IDs');
+
+		this.traversal.push([ UNBIND, queryOrSouls, direction ]);
 
 		return this;
 	}
 
-	unlinkAll (key) {
-		this.traversal.push([ UNLINK_ALL, key ]);
+	unbindKey (key) {
+		assert(key && isString(key), 'Key must be a non-empty string');
+
+		this.traversal.push([ UNBIND_BY_KEY, key ]);
 
 		return this;
 	}
 
 	concat (...queries) {
-		const traversal = [ ...this.traversal ];
-		for (const q of queries) {
-			traversal.push([ CONCAT, q ]);
-		}
-		const q = new Query(this.db, traversal, this);
-		this.relatives.push(q);
-		return q;
+		queries = queries.flat(Infinity).map((q) => {
+			if (isQuery(q)) return [ QUERY, q ];
+			if (isSoulId(q)) return [ SOULS, [ q ] ];
+			if (isArrayOfSoulIds(q)) return [ SOULS, q ];
+			return null;
+		}).filter(Boolean);
+
+		return new Query(this.transaction, [ [ QUERY, this ], ...queries ]);
 	}
 
-	async resolve () {
-		if (!this.traversal.length) return;
-		let souls = [ ...this.souls ];
-		for (const [ action, ...args ] of this.traversal) {
-			const op = OPS[action];
-			if (!op) throw new Error('Could not find operation for ' + action);
+	delete () {
+		this.traversal.push([ DELETE ]);
+		return this;
+	}
 
-			souls = await op({ souls }, ...args);
-			if (!souls) throw new Error(`Query resolution for ${action} returned nothing. This shouldn't ever happen.`);
+	async resolve (...dependencies) {
+		if (!this.traversal.length) return [ ...this.souls ];
+
+		assert(!dependencies.includes(this.qid), 'Circular query dependency detected');
+
+		let souls = [ ...this.souls ];
+		const { transaction, qid } = this;
+		const store = await transaction.ensureInitialized();
+		assert(isStore(store), 'Transaction did not resolve with a datastore');
+
+		for (const [ action, ...args ] of this.traversal) {
+			const op = Operations[action];
+			assert(op, 'Could not find operation for ' + action);
+
+			souls = await op({ qid, transaction, store, souls, dependencies }, ...args);
+			assert(souls, `Query resolution for ${action} returned nothing. This shouldn't ever happen.`);
 		}
 		this.souls = souls;
 		this.traversal = [];
+
+		return souls;
 	}
 
-	async has (query) {
-		await pall(
+	async includes (query) {
+		const [ left, right ] = await pall(
 			this.resolve(),
 			query.resolve(),
 		);
 
-		const left  = map(this.souls, 'id');
-		const right = map(query.souls, 'id');
 		return intersect(left, right).length === right.length;
 	}
 
-	async map (fn) {
-		return Promise.all(this.souls.map(fn));
+	async map (fn, { withData = false, concurrency = Infinity }) {
+		const store = await this.transaction.ensureInitialized();
+
+		let results = await pmap(this.resolve(), async (soulid, index) => {
+			const subq = new Query(this.transaction, [ [ SOULS, [ soulid ] ] ]);
+
+			let res = withData
+				? fn(subq, await store.getSoulData(soulid), index)
+				: fn(subq, index)
+			;
+
+			res = await res;
+
+			if (!res) return undefined;
+			if (isSoulId(res)) res = [ res ];
+			if (isQuery(res)) res = res.resolve();
+			return res;
+		}, { concurrency });
+
+		results = results.flat(1).filter(isSoulId);
+
+		return new Query(this.transaction, [ SOULS, results ]);
 	}
 
-	async get (one = false) {
-		await this.resolve();
-		if (!this.souls || !this.souls.length) return one ? null : [];
-		if (one) return this.souls.length ? this.souls[0].get() : null;
-		return this.map((s) => s.get());
+	async get (all = true) {
+		const souls = await this.resolve();
+		const store = await this.transaction.ensureInitialized();
+
+		if (!all) {
+			return souls.length ? await store.getSoulData(souls[0]) : null;
+		}
+
+		if (!souls.length) return [];
+
+		return pmap(this.souls, (soulid) => store.getSoulData(soulid));
+	}
+
+	async stat (all = false) {
+		const souls = await this.resolve();
+		const store = await this.transaction.ensureInitialized();
+
+		if (!all) {
+			return souls.length ? await store.getSoulMetadata(souls[0]) : null;
+		}
+
+		if (!souls.length) return [];
+
+		return pmap(this.souls, (soulid) => store.getSoulMetadata(soulid));
+	}
+
+	async keys () {
+		const store = await this.transaction.ensureInitialized();
+		const keys = await pmap(this.resolve(), (soulid) => store.getBoundKeySouls(soulid));
+		return keys.flat(1);
 	}
 
 	then (...args) {
-		return this.resolve()
-			.then(() => this.map((s) => s.ensure()))
-			.then(...args);
+		return this.resolve().then(...args);
 	}
 
-	async delete () {
-		await this.resolve();
-		await Promise.all(this.souls.map((s) => s.delete()));
-		this.souls = [];
-	}
 }
 
-Query.create = (db, key, type) => new Query(db, null, [ [ ROOTKEY, key, type ] ]);
+Query.create = (transaction, key, create = false) => new Query(transaction, [ [ FROM_ALIAS, key, create ] ]);
+Query.isQuery = isQuery;
+Query.isArrayOfQueries = isArrayOfQueries;

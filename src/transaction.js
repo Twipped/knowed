@@ -1,41 +1,40 @@
 
-import {
-	isStore,
-} from './shared';
+import { isStore } from './stores/abstract';
 import Query from './query';
-import Soul from './soul';
 
 export default class Transaction {
 
 	constructor (store = null) {
 		if (!isStore(store)) {
-			throw new TypeError('ProtoGraphDB did not receive a valid store object');
+			throw new TypeError('ProtoGraphDB Transaction did not receive a valid store object');
 		}
 		this.store = store;
 		this.initialized = false;
 	}
 
 	async ensureInitialized () {
-		if (this.initialized) return true;
-		await this.store.initialize();
+		if (this.initialized) return this.store;
+		const { store } = this;
+		await store.initialize();
+		return store;
 	}
 
 	async commit () {
-		await this.store.close(true);
+		return this.end(true);
+	}
+
+	async rollback () {
+		return this.end(false);
+	}
+
+	async end (write) {
+		if (!this.store) return;
+		await this.store.close(write);
 		this.store = null;
 	}
 
-	async end () {
-		await this.store.close(false);
-		this.store = null;
-	}
-
-	query (key, type) {
-		return new Query(this, key, type);
-	}
-
-	soul (id) {
-		return new Soul(this, id);
+	query (key, create = false) {
+		return Query.create(this, key, create);
 	}
 
 }
