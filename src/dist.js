@@ -4,11 +4,11 @@ import JsonStore from './stores/json';
 import AbstractStore from './stores/abstract';
 import ProtoGraphDB from './index';
 import {
-	BIND_RIGHT,
-	BIND_LEFT,
-	BIND_UP,
-	BIND_DOWN,
-	DIRECTION as BIND,
+  BIND_RIGHT,
+  BIND_LEFT,
+  BIND_UP,
+  BIND_DOWN,
+  DIRECTION as BIND,
 } from './binding';
 
 ProtoGraphDB.AbstractStore = AbstractStore;

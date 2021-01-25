@@ -1,47 +1,47 @@
 
 import { isStore } from './stores/abstract';
 import {
-	BIND_RIGHT,
-	BIND_LEFT,
-	BIND_UP,
-	BIND_DOWN,
+  BIND_RIGHT,
+  BIND_LEFT,
+  BIND_UP,
+  BIND_DOWN,
 } from './binding';
 import Query from './query';
 
 export default class Transaction {
 
-	constructor (store = null) {
-		if (!isStore(store)) {
-			throw new TypeError('ProtoGraphDB Transaction did not receive a valid store object');
-		}
-		this.store = store;
-		this.initialized = false;
-	}
+  constructor (store = null) {
+    if (!isStore(store)) {
+      throw new TypeError('ProtoGraphDB Transaction did not receive a valid store object');
+    }
+    this.store = store;
+    this.initialized = false;
+  }
 
-	async ensureInitialized () {
-		if (this.initialized) return this.store;
-		const { store } = this;
-		await store.initialize();
-		return store;
-	}
+  async ensureInitialized () {
+    if (this.initialized) return this.store;
+    const { store } = this;
+    await store.initialize();
+    return store;
+  }
 
-	async commit () {
-		return this.end(true);
-	}
+  async commit () {
+    return this.end(true);
+  }
 
-	async rollback () {
-		return this.end(false);
-	}
+  async rollback () {
+    return this.end(false);
+  }
 
-	async end (write) {
-		if (!this.store) return;
-		await this.store.close(write);
-		this.store = null;
-	}
+  async end (write) {
+    if (!this.store) return;
+    await this.store.close(write);
+    this.store = null;
+  }
 
-	query (key, create = false) {
-		return Query.create(this, key, create);
-	}
+  query (key, create = false) {
+    return Query.create(this, key, create);
+  }
 
 }
 
