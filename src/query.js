@@ -23,7 +23,14 @@ import Operations, {
 	DELETE,
 } from './ops';
 
-import { isStore, DIRECTION, isValidDirection } from './stores/abstract';
+import { isStore } from './stores/abstract';
+import {
+	BIND_RIGHT,
+	BIND_LEFT,
+	BIND_UP,
+	BIND_DOWN,
+	isValidDirection,
+} from './binding';
 
 export const isQuery = (input) => input instanceof Query;
 export const isArrayOfQueries = isArrayOf(isQuery);
@@ -70,18 +77,18 @@ export default class Query {
 		return new Query(this.transaction, [ [ QUERY, this ], [ TRAVEL_IN_DIRECTION, direction, createIfMissing ] ]);
 	}
 
-	key (key, directionForCreation = DIRECTION.RIGHT) {
+	key (key, directionForCreation = BIND_RIGHT) {
 		return new Query(this.transaction, [ [ QUERY, this ], [ TRAVEL_TO_KEY, key, directionForCreation ] ]);
 	}
 
-	keyParent (key, directionForCreation = DIRECTION.LEFT) {
+	keyParent (key, directionForCreation = BIND_LEFT) {
 		return new Query(this.transaction, [ [ QUERY, this ], [ TRAVEL_FROM_KEY, key, directionForCreation ] ]);
 	}
 
-	down (...args) { return this.to(DIRECTION.UP, ...args); }
-	up (...args) { return this.to(DIRECTION.DOWN, ...args); }
-	left (...args) { return this.to(DIRECTION.LEFT, ...args); }
-	right (...args) { return this.to(DIRECTION.RIGHT, ...args); }
+	down (...args) { return this.to(BIND_UP, ...args); }
+	up (...args) { return this.to(BIND_DOWN, ...args); }
+	left (...args) { return this.to(BIND_LEFT, ...args); }
+	right (...args) { return this.to(BIND_RIGHT, ...args); }
 
 	set (key, value) {
 		if (isString(key) && value !== undefined) {
@@ -263,6 +270,11 @@ export default class Query {
 	}
 
 }
+
+Query.prototype.BIND_RIGHT = BIND_RIGHT;
+Query.prototype.BIND_LEFT = BIND_LEFT;
+Query.prototype.BIND_UP = BIND_UP;
+Query.prototype.BIND_DOWN = BIND_DOWN;
 
 Query.create = (transaction, key, create = false) => new Query(transaction, [ [ FROM_ALIAS, key, create ] ]);
 Query.isQuery = isQuery;

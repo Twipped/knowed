@@ -1,5 +1,6 @@
 
-import AbstractStore, {
+import AbstractStore from './abstract';
+import {
 	BIND_RIGHT,
 	BIND_LEFT,
 	BIND_UP,
@@ -8,7 +9,8 @@ import AbstractStore, {
 	oppositeDirection,
 	isValidDirection,
 	areValidDirections,
-} from './abstract';
+} from '../binding';
+
 import { isArray, isObject, isMap, isSet, assert, pmap, fromPairs, nullIterator, entries } from '../utils';
 import sha256 from '../sha';
 import { isSoulId } from '../ids';

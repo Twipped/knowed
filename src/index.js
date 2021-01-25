@@ -3,6 +3,13 @@
 export { default as MemStore } from './stores/mem';
 export { default as JsonStore } from './stores/json';
 export { default as AbstractStore } from './stores/abstract';
+export {
+	BIND_RIGHT,
+	BIND_LEFT,
+	BIND_UP,
+	BIND_DOWN,
+	DIRECTION as BIND,
+} from './binding';
 
 import { isStore } from './stores/abstract';
 import Transaction from './transaction';

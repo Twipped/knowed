@@ -1,7 +1,7 @@
 
 import { pmap } from './utils';
 import { isSoulId, soulgen } from './ids';
-import { oppositeDirection } from './stores/abstract';
+import { oppositeDirection } from './binding';
 
 export const SOULS = 'SOULS';
 export const QUERY = 'QUERY';

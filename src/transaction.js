@@ -1,5 +1,11 @@
 
 import { isStore } from './stores/abstract';
+import {
+	BIND_RIGHT,
+	BIND_LEFT,
+	BIND_UP,
+	BIND_DOWN,
+} from './binding';
 import Query from './query';
 
 export default class Transaction {
@@ -38,3 +44,8 @@ export default class Transaction {
 	}
 
 }
+
+Transaction.prototype.BIND_RIGHT = BIND_RIGHT;
+Transaction.prototype.BIND_LEFT = BIND_LEFT;
+Transaction.prototype.BIND_UP = BIND_UP;
+Transaction.prototype.BIND_DOWN = BIND_DOWN;
