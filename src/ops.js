@@ -53,34 +53,40 @@ export default {
     return souls;
   },
 
-  async TRAVEL_IN_DIRECTION ({ store, souls }, direction, createIfMissing) {
-    return await pmap(souls, async (soulid) => {
+  async TRAVEL_IN_DIRECTION ({ store, souls }, direction, createIfMissing, key) {
+    return (await pmap(souls, async (soulid) => {
       const boundSouls = await store.getBoundSouls(soulid, direction);
-      if (!boundSouls.length && !createIfMissing) return [];
+      if (boundSouls.length) return boundSouls;
 
-      const newSoulId = await soulgen(store);
-      await store.createSoul(soulid);
-      await store.bindSouls(soulid, newSoulId, { direction });
-      return newSoulId;
-    }).flat(Infinity).filter(isSoulId);
+      if (!createIfMissing) return [];
+
+      const newSoulID = await soulgen(store);
+      await store.createSoul(newSoulID);
+      await store.bindSouls(soulid, newSoulID, { direction, key });
+      return newSoulID;
+    })).flat(Infinity).filter(isSoulId);
   },
 
   async TRAVEL_TO_KEY ({ store, souls }, key, directionIfMissing) {
     return await pmap(souls, async (soulid) => {
-      const boundSoul = await store.getBoundSoul(soulid, key);
-      if (!boundSoul && !directionIfMissing) return null;
+      const boundSouls = await store.getBoundSoul(soulid, key);
+      if (boundSouls.length) return boundSouls;
 
-      const newSoulId = await soulgen(store);
-      await store.createSoul(soulid);
-      await store.bindSouls(soulid, newSoulId, { key, direction: directionIfMissing });
-      return newSoulId;
+      if (!directionIfMissing) return [];
+
+      const newSoulID = await soulgen(store);
+      await store.createSoul(newSoulID);
+      await store.bindSouls(soulid, newSoulID, { direction: directionIfMissing, key });
+      return newSoulID;
     }).flat(Infinity).filter(isSoulId);
   },
 
   async TRAVEL_FROM_KEY ({ store, souls }, key, directionIfMissing) {
     return await pmap(souls, async (soulid) => {
       const boundSoul = await store.getBoundSoul(soulid, key);
-      if (!boundSoul && !directionIfMissing) return null;
+      if (boundSoul) return boundSoul;
+
+      if (!directionIfMissing) return [];
 
       const newSoulId = await soulgen(store);
       await store.createSoul(soulid);
@@ -89,11 +95,9 @@ export default {
     }).flat(Infinity).filter(isSoulId);
   },
 
-  async BIND ({ qid, dependencies, store, souls }, queriesToLink, direction, key) {
+  async BIND ({ qid, dependencies, store, souls }, query, direction, key) {
     // first we resolve all the queries into an array of souls
-    const soulsToLink = pmap(queriesToLink, (q) => q.resolve(qid, ...dependencies))
-      .flat(Infinity)
-      .filter(isSoulId);
+    const soulsToLink = await query.resolve(qid, ...dependencies);
 
     await pmap(souls, (startSoulId) =>
       pmap(soulsToLink, (endSoulId) => store.bindSouls(startSoulId, endSoulId, { direction, key })),
@@ -102,11 +106,9 @@ export default {
     return souls;
   },
 
-  async UNBIND ({ qid, dependencies, store, souls }, queriesToUnlink, direction) {
+  async UNBIND ({ qid, dependencies, store, souls }, query, direction) {
     // first we resolve all the queries into an array of souls
-    const soulsToLink = pmap(queriesToUnlink, (q) => q.resolve(qid, ...dependencies))
-      .flat(Infinity)
-      .filter(isSoulId);
+    const soulsToLink = query.resolve(qid, ...dependencies);
 
     await pmap(souls, (startSoulId) =>
       pmap(soulsToLink, (endSoulId) => store.unbindSouls(startSoulId, { soulid: endSoulId, direction })),

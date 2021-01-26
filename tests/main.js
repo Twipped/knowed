@@ -2,6 +2,8 @@
 
 import tap from 'tap';
 import PGraph, { MemStore, BIND } from '../src/index';
+import { intersect } from '../src/utils';
+import { inspect } from 'util';
 
 tap.test('basic query', async (t) => {
   const pg = new PGraph(MemStore);
@@ -52,19 +54,44 @@ tap.test('basic query', async (t) => {
   const pg = new PGraph(MemStore);
   await pg.transaction(async (tr) => {
 
-    const superior = tr.query('employee-1');
-    const subordinates = superior.down(true);
-    const subordinate = tr.query('employee-2', true);
+    const supervisor = tr.query('employee-1', true).set('name', 'supervisor');
+    const subordinates = supervisor.right(true).set('name', 'subordinates');
+    const employee = tr.query('employee-2', true).set('name', 'employee');
 
-    subordinates.down(subordinate);
-    subordinate.up(superior, 'supervisor');
+    const bindSubordinatesToEmployee = subordinates.bindDown(employee);
+    const bindEmployeeToSupervisor = employee.bindUp(supervisor, 'supervisor');
 
-    console.log(subordinate.traversal);
-
-    await subordinate;
+    await employee;
 
     const db = tr.store._cache;
-    console.log(db);
+
+    const supSoulid = supervisor.souls[0];
+    const empSoulid = employee.souls[0];
+    const subordinatesSoulid = subordinates.souls[0];
+
+    t.same(tr.store._catalog, new Set([ supSoulid, empSoulid, subordinatesSoulid ]), 'three souls were created and tracked');
+
+    t.same(db.get('ALIASES'), new Set([ 'employee-2', 'employee-1' ]), 'both employees were aliased');
+
+    t.ok(db.has(supSoulid), 'supervisor soul exists in db');
+    t.ok(db.has(empSoulid), 'employee soul exists in db');
+    t.ok(db.has(subordinatesSoulid), 'supervisors subordinates collection exists in db');
+
+    t.notEqual(supSoulid, subordinatesSoulid, 'subordinates soul differs from supervisor soul');
+    t.notEqual(empSoulid, subordinatesSoulid, 'subordinates soul differs from employees soul');
+    t.equal(bindEmployeeToSupervisor.souls[0], empSoulid, 'bindEmployeeToSupervisor is still the employee soul');
+    t.equal(bindSubordinatesToEmployee.souls[0], subordinatesSoulid, 'bindSubordinatesToEmployee is still the subordinates soul');
+
+    t.same(db.get(empSoulid + '-TO_KEY'), new Map([ [ supSoulid, [ 'supervisor', 'UP' ] ] ]), 'employee recorded the key link to the supervisor');
+    t.same(db.get(supSoulid + '-RIGHT'), new Set([ subordinatesSoulid ]), 'supervisor is bound to the subordinates soul');
+    t.same(db.get(supSoulid + '-DOWN'), new Set([ empSoulid ]), 'supervisor is bound to the employee');
+    t.same(db.get(empSoulid + '-UP'), new Set([ supSoulid, subordinatesSoulid ]), 'employee is bound to the supervisor and the subordinates collection');
+
+    const refetch = tr.query('employee-1', false).right().down();
+    await refetch;
+
+    t.same(refetch.souls, [ empSoulid ], 'renavigating to the employee via the supervisor works');
+
   });
 });
 

@@ -39,7 +39,7 @@ export default class Transaction {
     this.store = null;
   }
 
-  query (key, create = false) {
+  query (key, create = true) {
     return Query.create(this, key, create);
   }
 

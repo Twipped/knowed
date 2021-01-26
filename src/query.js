@@ -32,7 +32,7 @@ import {
   isValidDirection,
 } from './binding';
 
-export const isQuery = (input) => input instanceof Query;
+export const isQuery = (input) => input._isQuery;
 export const isArrayOfQueries = isArrayOf(isQuery);
 
 
@@ -44,6 +44,7 @@ export default class Query {
     this.transaction = transaction;
     this.traversal = [ ...travels ];
     this.qid = querygen();
+    this.descendants = [];
 
     if (this.traversal[0] && this.traversal[0][0] === SOULS) {
       const [ , souls ] = this.traversal.shift();
@@ -51,6 +52,12 @@ export default class Query {
     } else {
       this.souls = [];
     }
+  }
+
+  _spawnChild (...travels) {
+    const q = new Query(this.transaction, [ [ QUERY, this ], ...travels ]);
+    this.descendants.push(q);
+    return q;
   }
 
   get empty () {
@@ -74,23 +81,20 @@ export default class Query {
   }
 
   to (direction, createIfMissing = true, key = null) {
-    if (isQuery(createIfMissing)) {
-      this.bind(direction, createIfMissing, key);
-    }
-    return new Query(this.transaction, [ [ QUERY, this ], [ TRAVEL_IN_DIRECTION, direction, createIfMissing ] ]);
+    return this._spawnChild([ TRAVEL_IN_DIRECTION, direction, createIfMissing, key ]);
   }
 
   key (key, directionForCreation = BIND_RIGHT) {
-    return new Query(this.transaction, [ [ QUERY, this ], [ TRAVEL_TO_KEY, key, directionForCreation ] ]);
+    return this._spawnChild([ TRAVEL_TO_KEY, key, directionForCreation ]);
   }
 
   keyParent (key, directionForCreation = BIND_LEFT) {
-    return new Query(this.transaction, [ [ QUERY, this ], [ TRAVEL_FROM_KEY, key, directionForCreation ] ]);
+    return this._spawnChild([ TRAVEL_FROM_KEY, key, directionForCreation ]);
   }
 
-  down (...args) { return this.to(BIND_DOWN, ...args); }
-  up (...args) { return this.to(BIND_UP, ...args); }
-  left (...args) { return this.to(BIND_LEFT, ...args); }
+  down (...args)  { return this.to(BIND_DOWN, ...args); }
+  up (...args)    { return this.to(BIND_UP, ...args); }
+  left (...args)  { return this.to(BIND_LEFT, ...args); }
   right (...args) { return this.to(BIND_RIGHT, ...args); }
 
   set (key, value) {
@@ -125,7 +129,6 @@ export default class Query {
       queryOrSouls = new Query(this.transaction, [ SOULS, queryOrSouls ]);
     }
     if (isArrayOfQueries(queryOrSouls)) {
-      console.log(queryOrSouls);
       queryOrSouls.forEach((q) => this.bind(direction, q));
       return this;
     }
@@ -135,6 +138,11 @@ export default class Query {
     this.traversal.push([ BIND, queryOrSouls, direction, key || null ]);
     return this;
   }
+
+  bindDown (...args)  { return this.bind(BIND_DOWN, ...args); }
+  bindUp (...args)    { return this.bind(BIND_UP, ...args); }
+  bindLeft (...args)  { return this.bind(BIND_LEFT, ...args); }
+  bindRight (...args) { return this.bind(BIND_RIGHT, ...args); }
 
   unbind (direction, queryOrSouls = null) {
     assert(isValidDirection(direction), 'Expected LEFT, RIGHT, UP or DOWN as a direction.');
@@ -200,6 +208,11 @@ export default class Query {
     }
     this.souls = souls;
     this.traversal = [];
+
+    if (this.descendants.length) {
+      await pmap(this.descendants, (d) => d.resolve());
+      this.descendants = [];
+    }
 
     return souls;
   }
@@ -279,7 +292,8 @@ Query.prototype.BIND_RIGHT = BIND_RIGHT;
 Query.prototype.BIND_LEFT = BIND_LEFT;
 Query.prototype.BIND_UP = BIND_UP;
 Query.prototype.BIND_DOWN = BIND_DOWN;
+Query.prototype._isQuery = true;
 
-Query.create = (transaction, key, create = false) => new Query(transaction, [ [ FROM_ALIAS, key, create ] ]);
+Query.create = (transaction, key, create = true) => new Query(transaction, [ [ FROM_ALIAS, key, create ] ]);
 Query.isQuery = isQuery;
 Query.isArrayOfQueries = isArrayOfQueries;
