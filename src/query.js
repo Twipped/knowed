@@ -97,7 +97,7 @@ export default class Query {
   left (...args)  { return this.to(BIND_LEFT, ...args); }
   right (...args) { return this.to(BIND_RIGHT, ...args); }
 
-  set (key, value) {
+  setMeta (key, value) {
     if (isString(key) && value !== undefined) {
       key = { [key]: value };
     }
@@ -263,7 +263,7 @@ export default class Query {
     return pmap(this.souls, (soulid) => store.getSoulData(soulid));
   }
 
-  async stat (...args) {
+  async getMeta (...args) {
     let key = null;
     let all = false;
     if (args.length === 1) {

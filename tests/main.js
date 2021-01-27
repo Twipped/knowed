@@ -11,7 +11,7 @@ tap.test('basic query', async (t) => {
       .put({
         name: 'John Smith',
       })
-      .set('foo', 'bar')
+      .setMeta('foo', 'bar')
 		;
 
     t.same(employee.souls.length, 0, 'Query does not yet have any souls.');
@@ -52,9 +52,9 @@ tap.test('basic query', async (t) => {
   const pg = new PGraph(MemStore);
   await pg.transaction(async (tr) => {
 
-    const supervisor = tr.query('employee-1', true).set('name', 'supervisor');
-    const subordinates = supervisor.right(true).set('name', 'subordinates');
-    const employee = tr.query('employee-2', true).set('name', 'employee');
+    const supervisor = tr.query('employee-1', true).setMeta('name', 'supervisor');
+    const subordinates = supervisor.right(true).setMeta('name', 'subordinates');
+    const employee = tr.query('employee-2', true).setMeta('name', 'employee');
 
     const bindSubordinatesToEmployee = subordinates.bindDown(employee);
     const bindEmployeeToSupervisor = employee.bindUp(supervisor, 'supervisor');

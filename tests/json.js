@@ -13,9 +13,9 @@ tap.test('jsonstore-1', async (t) => {
   const pg = new PGraph(JsonStore, { path });
   await pg.transaction(async (tr) => {
 
-    const supervisor = tr.query('employee-1', true).set('name', 'supervisor');
-    const subordinates = supervisor.right(true).set('name', 'subordinates');
-    const employee = tr.query('employee-2', true).set('name', 'employee');
+    const supervisor = tr.query('employee-1', true).setMeta('type', 'supervisor');
+    const subordinates = supervisor.right(true).setMeta('type', 'subordinates');
+    const employee = tr.query('employee-2', true).setMeta('type', 'employee');
 
     subordinates.bindDown(employee);
     employee.bindUp(supervisor, 'supervisor');
@@ -29,7 +29,7 @@ tap.test('jsonstore-1', async (t) => {
 
     const refetch = tr.query('employee-1', false).right().down();
 
-    t.equal(await refetch.stat('name'), 'employee', 'Was able to renavigate to the employee by way of their supervisor');
+    t.equal(await refetch.getMeta('type'), 'employee', 'Was able to renavigate to the employee by way of their supervisor');
 
   });
 });
