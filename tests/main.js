@@ -1,9 +1,7 @@
 /* eslint quotes:0, new-cap:0 */
 
 import tap from 'tap';
-import PGraph, { MemStore, BIND } from '../src/index';
-import { intersect } from '../src/utils';
-import { inspect } from 'util';
+import PGraph, { MemStore } from '../src/index';
 
 tap.test('basic query', async (t) => {
   const pg = new PGraph(MemStore);

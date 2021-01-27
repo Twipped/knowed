@@ -1,18 +1,14 @@
 
 import fs from 'fs-extra';
 import MemStore from './mem';
-import { isSoulId } from '../ids';
+import { isMap, isSet } from '../utils';
+import stream from 'stream';
+import { promisify } from 'util';
+import StreamArray from 'stream-json/streamers/StreamArray';
 
+const pipeline = promisify(stream.pipeline);
 const stat = (f) => fs.stat(f).catch(() => null);
 const writable = (f) => fs.access(f, fs.constants.W_OK).then(() => true, () => false);
-
-const STREAM_THRESHOLD = 1024 * 1024; // 1MB
-
-function stripBom (content) {
-  // we do this because JSON.parse would convert it to a utf8 string if encoding wasn't specified
-  if (Buffer.isBuffer(content)) content = content.toString('utf8');
-  return content.replace(/^\uFEFF/, '');
-}
 
 export default class JSONStore extends MemStore {
 
@@ -38,30 +34,50 @@ export default class JSONStore extends MemStore {
       return;
     }
 
-    if (stats.size < STREAM_THRESHOLD) {
-      const data = stripBom(await fs.readFile(this.path, { encoding: 'utf8' }));
-      if (!data) {
-        this._cache = new Map();
-        return;
-      }
+    const rows = fs.createReadStream(this.path).pipe(StreamArray.withParser());
 
-      try {
-        for (const [ k, v ] of JSON.parse(data)) {
-          this._cache.set(k, v);
-          if (isSoulId(k)) this._catalog.add(k);
-        }
-      } catch (err) {
-        throw new Error(`pGraph JSONStore could not load db file "${this.path}": ${err.message}`);
+    try {
+      this._cache = new Map();
+      for await (const { value: [ k, v ] } of rows) {
+        this._cache.set(k, v);
       }
-      return;
+    } catch (err) {
+      throw new Error(`pGraph JSONStore could not load db file "${this.path}": ${err.message}`);
     }
   }
 
   async close (write) {
     if (write) {
-      await fs.writeJson(this._cache);
+      await pipeline(
+        stringifyCache(this._cache),
+        fs.createWriteStream(this.path, { encoding: 'utf8' }),
+      );
     }
+
     this._cache = null;
   }
 
+}
+
+function replacer (key, value) {
+  const original = this[key];
+
+  if (isMap(original) || isSet(original)) {
+    return [ ...original ];
+  }
+
+  return value;
+}
+
+function stringifyCache (cache) {
+  return stream.Readable.from(async function* cachedump (entries) {
+    yield '[';
+    let i = 0;
+    for (let [ k, v ] of entries) {
+      k = JSON.stringify(k);
+      v = JSON.stringify(v, replacer);
+      yield `${i++ ? ',' : ''}\n[${k},${v}]`;
+    }
+    yield '\n]';
+  }(cache.entries()));
 }
