@@ -263,17 +263,29 @@ export default class Query {
     return pmap(this.souls, (soulid) => store.getSoulData(soulid));
   }
 
-  async stat (all = false) {
+  async stat (...args) {
+    let key = null;
+    let all = false;
+    if (args.length === 1) {
+      if (isString(args[0])) {
+        key = args[0];
+      } else if (args[0] === true) {
+        all = true;
+      }
+    } else if (args.length > 1) {
+      [ key, all ] = args;
+    }
+
     const souls = await this.resolve();
     const store = await this.transaction.ensureInitialized();
 
     if (!all) {
-      return souls.length ? await store.getSoulMetadata(souls[0]) : null;
+      return souls.length ? await store.getSoulMetadata(souls[0], key) : null;
     }
 
     if (!souls.length) return [];
 
-    return pmap(this.souls, (soulid) => store.getSoulMetadata(soulid));
+    return pmap(this.souls, (soulid) => store.getSoulMetadata(soulid, key));
   }
 
   async keys () {
