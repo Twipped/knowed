@@ -1,7 +1,7 @@
 /* eslint quotes:0, new-cap:0 */
 
 import tap from 'tap';
-import PGraph, { JsonStore } from '../src/index';
+import Knowed, { JsonStore } from '../src/index';
 import { resolve } from 'path';
 import fs from 'fs-extra';
 
@@ -10,7 +10,7 @@ tap.test('jsonstore-1', async (t) => {
 
   await fs.remove(path);
 
-  const pg = new PGraph(JsonStore, { path });
+  const pg = new Knowed(JsonStore, { path });
   await pg.transaction(async (tr) => {
 
     const supervisor = tr.query('employee-1', true).setMeta('type', 'supervisor');

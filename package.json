@@ -1,7 +1,7 @@
 {
-  "name": "handybars",
-  "version": "0.3.0",
-  "description": "A light-weight templating engine inspired by Handlebars",
+  "name": "knowed",
+  "version": "0.0.1",
+  "description": "Abstraction layer for rapid prototyping of graph database structures",
   "main": "dist/index.cjs.js",
   "module": "dist/index.esm.js",
   "scripts": {

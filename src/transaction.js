@@ -12,7 +12,7 @@ export default class Transaction {
 
   constructor (store = null) {
     if (!isStore(store)) {
-      throw new TypeError('ProtoGraphDB Transaction did not receive a valid store object');
+      throw new TypeError('Knowed Transaction did not receive a valid store object');
     }
     this.store = store;
     this.initialized = false;

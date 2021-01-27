@@ -1,10 +1,10 @@
 /* eslint quotes:0, new-cap:0 */
 
 import tap from 'tap';
-import PGraph, { MemStore } from '../src/index';
+import Knowed, { MemStore } from '../src/index';
 
 tap.test('basic query', async (t) => {
-  const pg = new PGraph(MemStore);
+  const pg = new Knowed(MemStore);
   await pg.transaction(async (tr) => {
 
     const employee = tr.query('employee-1', true)
@@ -49,7 +49,7 @@ tap.test('basic query', async (t) => {
 
 
 tap.test('basic query', async (t) => {
-  const pg = new PGraph(MemStore);
+  const pg = new Knowed(MemStore);
   await pg.transaction(async (tr) => {
 
     const supervisor = tr.query('employee-1', true).setMeta('name', 'supervisor');

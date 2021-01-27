@@ -14,7 +14,7 @@ export {
 import { isStore } from './stores/abstract';
 import Transaction from './transaction';
 
-export default class ProtoGraphDB {
+export default class Knowed {
 
   constructor (store, options = {}) {
     this.store = store;
@@ -23,7 +23,7 @@ export default class ProtoGraphDB {
 
   async transaction (fn) {
     if (!isStore(this.store)) {
-      throw new TypeError('ProtoGraphDB did not receive a valid store object');
+      throw new TypeError('Knowed did not receive a valid store object');
     }
     const Store = this.store;
     const store = new Store(this.options);
