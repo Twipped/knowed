@@ -1,6 +1,6 @@
 {
   "name": "knowed",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Abstraction layer for rapid prototyping of graph database structures",
   "main": "dist/index.cjs.js",
   "module": "dist/index.esm.js",
