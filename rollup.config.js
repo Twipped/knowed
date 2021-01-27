@@ -6,49 +6,52 @@ import commonjs from '@rollup/plugin-commonjs';
 import { join } from 'path';
 
 const bannerConfig = {
-	file: join(__dirname, 'LICENSE.txt'),
+  file: join(__dirname, 'LICENSE.txt'),
 };
 
-const plugins = [
-	resolve(),
-	// exclude(),
-	commonjs({
-		include: 'node_modules/**',
-	}),
-	babel({
-		exclude: 'node_modules/**',
-		presets: [
-			'@babel/env',
-		],
-	}),
-	banner(bannerConfig),
-];
+const config = {
+  plugins: [
+    resolve({
+      preferBuiltins: true,
+    }),
+    // exclude(),
+    commonjs({
+      include: 'node_modules/**',
+    }),
+    babel({
+      exclude: 'node_modules/**',
+      presets: [
+        '@babel/env',
+      ],
+    }),
+    banner(bannerConfig),
+  ],
+  external: [
+    'crypto',
+    'stream',
+    'fs-extra',
+    'stream-json',
+    'stream-json/streamers/StreamArray',
+  ],
+};
 
 export default [
-	{
-		input: 'src/dist.js',
-		output: {
-			file: 'dist/index.cjs.js',
-			format: 'cjs',
-			exports: 'default',
-		},
-		plugins,
-		external: [
-			'crypto',
-			'fs-extra',
-		],
-	},
-	{
-		input: 'src/index.js',
-		output: {
-			file: 'dist/index.esm.js',
-			format: 'esm',
-		},
-		plugins,
-		external: [
-			'crypto',
-			'fs-extra',
-		],
-	},
+  {
+    ...config,
+    input: 'src/dist.js',
+    output: {
+      file: 'dist/index.cjs.js',
+      format: 'cjs',
+      exports: 'default',
+    },
+  },
+  {
+    ...config,
+    input: 'src/index.js',
+    output: {
+      file: 'dist/index.esm.js',
+      format: 'esm',
+    },
+  },
 
 ];

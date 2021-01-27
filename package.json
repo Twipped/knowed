@@ -4,6 +4,12 @@
   "description": "Abstraction layer for rapid prototyping of graph database structures",
   "main": "dist/index.cjs.js",
   "module": "dist/index.esm.js",
+  "exports": {
+    "import": "./src/index.js",
+    "require": "./dist/index.cjs.js",
+    "default": "./dist/index.esm.js"
+  },
+  "type": "module",
   "scripts": {
     "test": "tap -R base --no-coverage tests",
     "cover": "tap -R terse --coverage tests",
@@ -31,14 +37,13 @@
     "eslint-plugin-node": "~11.1.0",
     "eslint-plugin-promise": "~4.2.1",
     "js-beautify": "~1.13.4",
-    "marky": "~1.2.1",
     "rollup": "~2.38.0",
     "rollup-plugin-babel": "~4.4.0",
     "rollup-plugin-banner": "~0.2.1",
     "rollup-plugin-exclude-dependencies-from-bundle": "~1.1.17",
     "tap": "~14.11.0",
-    "tapsuite": "~2.0.1",
-    "through2": "~4.0.2"
+    "stream-chain": "~2.2.4",
+    "tapsuite": "~2.0.1"
   },
   "files": [
     "dist",
@@ -46,7 +51,6 @@
   ],
   "dependencies": {
     "fs-extra": "~9.1.0",
-    "stream-chain": "~2.2.4",
     "stream-json": "~1.7.1"
   },
   "babel": {
