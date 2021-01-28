@@ -1,7 +1,8 @@
 /* eslint quotes:0, new-cap:0 */
 
 import tap from 'tap';
-import Knowed, { MemStore } from '../src/index';
+import Knowed, { MemStore, BIND } from '../src/index';
+// import { inspect } from 'util';
 
 tap.test('basic query', async (t) => {
   const pg = new Knowed(MemStore);
@@ -21,7 +22,7 @@ tap.test('basic query', async (t) => {
       [ 'UPDATE_META', { foo: 'bar' } ],
     ], 'Traversal contains a root key and a put command');
 
-    await employee;
+    await employee.resolve();
 
     t.same(employee.souls.length, 1, 'Query now contains one soul.');
     t.same(employee.traversal.length, 0, 'Query no longer has any traversals.');
@@ -39,11 +40,10 @@ tap.test('basic query', async (t) => {
     t.same(db.get(soulid + '-ALIASES'), new Set([ 'employee-1' ]), 'soul recorded the alias');
     t.same(db.get(soulid + '-DATA'), { name: 'John Smith' }, 'Soul data recorded');
 
-    const refetch = tr.query('employee-1', false);
-    await refetch;
+    const refetch = await tr.query('employee-1', false).resolve();
 
     t.same(employee.souls, refetch.souls, 'Refetch found the same soul.');
-    t.same(await refetch.get(), [ { name: 'John Smith' } ], 'Retrieved the data from the record with the same alias.');
+    t.same(await refetch.get(), { name: 'John Smith' }, 'Retrieved the data from the record with the same alias.');
   });
 });
 
@@ -53,15 +53,18 @@ tap.test('basic query', async (t) => {
   await pg.transaction(async (tr) => {
 
     const supervisor = tr.query('employee-1', true).setMeta('name', 'supervisor');
-    const subordinates = supervisor.right(true).setMeta('name', 'subordinates');
+    const subordinates = supervisor.to('subordinates', true).setMeta('name', 'subordinates');
     const employee = tr.query('employee-2', true).setMeta('name', 'employee');
 
-    const bindSubordinatesToEmployee = subordinates.bindDown(employee);
-    const bindEmployeeToSupervisor = employee.bindUp(supervisor, 'supervisor');
+    const bindSubordinatesToEmployee = subordinates.bind(employee);
+    const bindEmployeeToSupervisor = employee.bind(supervisor, { key: 'supervisor', direction: BIND.NORTH });
 
-    await employee;
+    await employee.resolve();
 
+    // console.log(inspect({ subordinates }, { depth: 5 }));return
     const db = tr.store._cache;
+
+    // console.log(inspect({ db }, { depth: 5, color: true }));
 
     const supSoulid = supervisor.souls[0];
     const empSoulid = employee.souls[0];
@@ -80,13 +83,14 @@ tap.test('basic query', async (t) => {
     t.equal(bindEmployeeToSupervisor.souls[0], empSoulid, 'bindEmployeeToSupervisor is still the employee soul');
     t.equal(bindSubordinatesToEmployee.souls[0], subordinatesSoulid, 'bindSubordinatesToEmployee is still the subordinates soul');
 
-    t.same(db.get(empSoulid + '-TO_KEY'), new Map([ [ supSoulid, [ 'supervisor', 'UP' ] ] ]), 'employee recorded the key link to the supervisor');
-    t.same(db.get(supSoulid + '-RIGHT'), new Set([ subordinatesSoulid ]), 'supervisor is bound to the subordinates soul');
-    t.same(db.get(supSoulid + '-DOWN'), new Set([ empSoulid ]), 'supervisor is bound to the employee');
-    t.same(db.get(empSoulid + '-UP'), new Set([ supSoulid, subordinatesSoulid ]), 'employee is bound to the supervisor and the subordinates collection');
+    t.same(db.get(empSoulid + '-TO_KEY'), new Map([ [ supSoulid, [ 'supervisor', 'NORTH' ] ] ]), 'employee recorded the key link to the supervisor');
+    t.same(db.get(supSoulid + '-TO_KEY'), new Map([ [ subordinatesSoulid, [ 'subordinates', 'SOUTH' ] ] ]), 'supervisor recorded the key link to the subordinates');
+    t.same(db.get(supSoulid + '-SOUTH'), new Set([ subordinatesSoulid, empSoulid ]), 'supervisor is bound to the subordinates collection and the employee');
+    t.same(db.get(subordinatesSoulid + '-NORTH'), new Set([ supSoulid ]), 'subordinates is bound to the supervisor');
+    t.same(db.get(subordinatesSoulid + '-SOUTH'), new Set([ empSoulid ]), 'subordinates is bound to the employee');
+    t.same(db.get(empSoulid + '-NORTH'), new Set([ supSoulid, subordinatesSoulid ]), 'employee is bound to the supervisor and the subordinates collection');
 
-    const refetch = tr.query('employee-1', false).right().down();
-    await refetch;
+    const refetch = await tr.query('employee-1', false).to('subordinates').to().resolve();
 
     t.same(refetch.souls, [ empSoulid ], 'renavigating to the employee via the supervisor works');
 

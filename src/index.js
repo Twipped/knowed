@@ -4,11 +4,11 @@ export { default as MemStore } from './stores/mem';
 export { default as JsonStore } from './stores/json';
 export { default as AbstractStore } from './stores/abstract';
 export {
-  BIND_RIGHT,
-  BIND_LEFT,
-  BIND_UP,
-  BIND_DOWN,
-  DIRECTION as BIND,
+  BIND_EAST,
+  BIND_WEST,
+  BIND_NORTH,
+  BIND_SOUTH,
+  BIND,
 } from './binding';
 
 import { isStore } from './stores/abstract';

@@ -1,5 +1,5 @@
 
-import { isString, isObject, isArrayOf, pall, pmap, intersect, assert } from './utils';
+import { isUndefinedOrNull, isFunction, isString, isObject, isArrayOf, pall, pmap, intersect, assert } from './utils';
 import {
   isSoulId,
   isArrayOfSoulIds,
@@ -11,9 +11,7 @@ import Operations, {
   FROM_ALIAS,
   SET_ALIAS,
   REMOVE_ALIAS,
-  TRAVEL_IN_DIRECTION,
-  TRAVEL_TO_KEY,
-  TRAVEL_FROM_KEY,
+  NAVIGATE,
   BIND,
   UNBIND,
   UNBIND_BY_KEY,
@@ -25,10 +23,10 @@ import Operations, {
 
 import { isStore } from './stores/abstract';
 import {
-  BIND_RIGHT,
-  BIND_LEFT,
-  BIND_UP,
-  BIND_DOWN,
+  BIND_EAST,
+  BIND_WEST,
+  BIND_NORTH,
+  BIND_SOUTH,
   isValidDirection,
 } from './binding';
 
@@ -80,22 +78,26 @@ export default class Query {
     return this;
   }
 
-  to (direction, createIfMissing = true, key = null) {
-    return this._spawnChild([ TRAVEL_IN_DIRECTION, direction, createIfMissing, key ]);
-  }
+  to (directionOrKey, create = false) {
+    if (isObject(directionOrKey, true)) {
+      directionOrKey = { direction: BIND_SOUTH, create, key: null, ...directionOrKey };
+    } else if (isValidDirection(directionOrKey)) {
+      directionOrKey = { direction: directionOrKey, create, key: null };
+    } else if (isString(directionOrKey)) {
+      directionOrKey = { direction: BIND_SOUTH, create, key: directionOrKey };
+    } else if (isUndefinedOrNull(directionOrKey)) {
+      directionOrKey = { direction: BIND_SOUTH, create, key: null };
+    } else {
+      assert.fail(`Unknown first argument for query.to(), expected plain object, direction or key, received ${typeof directionOrKey}`);
+    }
 
-  key (key, directionForCreation = BIND_RIGHT) {
-    return this._spawnChild([ TRAVEL_TO_KEY, key, directionForCreation ]);
-  }
+    if (isFunction(directionOrKey.create)) {
+      create = directionOrKey.create;
+      directionOrKey.create = (soulid) => create(new Query(this.transaction, [ SOULS, [ soulid ] ]));
+    }
 
-  keyParent (key, directionForCreation = BIND_LEFT) {
-    return this._spawnChild([ TRAVEL_FROM_KEY, key, directionForCreation ]);
+    return this._spawnChild([ NAVIGATE, directionOrKey ]);
   }
-
-  down (...args)  { return this.to(BIND_DOWN, ...args); }
-  up (...args)    { return this.to(BIND_UP, ...args); }
-  left (...args)  { return this.to(BIND_LEFT, ...args); }
-  right (...args) { return this.to(BIND_RIGHT, ...args); }
 
   setMeta (key, value) {
     if (isString(key) && value !== undefined) {
@@ -118,8 +120,22 @@ export default class Query {
     return this;
   }
 
-  bind (direction, queryOrSouls, key) {
-    assert(isValidDirection(direction), 'Expected LEFT, RIGHT, UP or DOWN as a direction.');
+  bind (queryOrSouls, directionOrKey) {
+    if (isObject(directionOrKey, true)) {
+      directionOrKey = { direction: BIND_SOUTH, key: null, ...directionOrKey };
+    } else if (isValidDirection(directionOrKey)) {
+      directionOrKey = { direction: directionOrKey, key: null };
+    } else if (isString(directionOrKey)) {
+      directionOrKey = { direction: BIND_SOUTH, key: directionOrKey };
+    } else if (isUndefinedOrNull(directionOrKey)) {
+      directionOrKey = { direction: BIND_SOUTH, key: null };
+    } else {
+      assert.fail(`Unknown second argument for query.bind(), expected plain object, direction or key, received ${typeof directionOrKey}`);
+    }
+
+    const { direction, key } = directionOrKey;
+
+    assert(isValidDirection(direction), 'Did not receive a valid binding direction. Found: ' + direction);
     assert(!key || isString(key), 'Key must either be falsy or a non-empty string');
 
     if (isSoulId(queryOrSouls)) {
@@ -139,12 +155,7 @@ export default class Query {
     return this;
   }
 
-  bindDown (...args)  { return this.bind(BIND_DOWN, ...args); }
-  bindUp (...args)    { return this.bind(BIND_UP, ...args); }
-  bindLeft (...args)  { return this.bind(BIND_LEFT, ...args); }
-  bindRight (...args) { return this.bind(BIND_RIGHT, ...args); }
-
-  unbind (direction, queryOrSouls = null) {
+  unbind (queryOrSouls, { direction = BIND_SOUTH } = {}) {
     assert(isValidDirection(direction), 'Expected LEFT, RIGHT, UP or DOWN as a direction.');
 
     if (isSoulId(queryOrSouls)) {
@@ -189,7 +200,7 @@ export default class Query {
     return this;
   }
 
-  async resolve (...dependencies) {
+  async settle (...dependencies) {
     if (!this.traversal.length) return [ ...this.souls ];
 
     assert(!dependencies.includes(this.qid), 'Circular query dependency detected');
@@ -210,17 +221,22 @@ export default class Query {
     this.traversal = [];
 
     if (this.descendants.length) {
-      await pmap(this.descendants, (d) => d.resolve());
+      await pmap(this.descendants, (d) => d.settle());
       this.descendants = [];
     }
 
     return souls;
   }
 
+  async resolve () {
+    await this.settle();
+    return this;
+  }
+
   async includes (query) {
     const [ left, right ] = await pall(
-      this.resolve(),
-      query.resolve(),
+      this.settle(),
+      query.settle(),
     );
 
     return intersect(left, right).length === right.length;
@@ -229,7 +245,7 @@ export default class Query {
   async map (fn, { withData = false, concurrency = Infinity }) {
     const store = await this.transaction.ensureInitialized();
 
-    let results = await pmap(this.resolve(), async (soulid, index) => {
+    let results = await pmap(this.settle(), async (soulid, index) => {
       const subq = new Query(this.transaction, [ [ SOULS, [ soulid ] ] ]);
 
       let res = withData
@@ -241,7 +257,7 @@ export default class Query {
 
       if (!res) return undefined;
       if (isSoulId(res)) res = [ res ];
-      if (isQuery(res)) res = res.resolve();
+      if (isQuery(res)) res = res.settle();
       return res;
     }, { concurrency });
 
@@ -250,8 +266,8 @@ export default class Query {
     return new Query(this.transaction, [ SOULS, results ]);
   }
 
-  async get (all = true) {
-    const souls = await this.resolve();
+  async get (all = false) {
+    const souls = await this.settle();
     const store = await this.transaction.ensureInitialized();
 
     if (!all) {
@@ -276,7 +292,7 @@ export default class Query {
       [ key, all ] = args;
     }
 
-    const souls = await this.resolve();
+    const souls = await this.settle();
     const store = await this.transaction.ensureInitialized();
 
     if (!all) {
@@ -290,22 +306,23 @@ export default class Query {
 
   async keys () {
     const store = await this.transaction.ensureInitialized();
-    const keys = await pmap(this.resolve(), (soulid) => store.getBoundKeySouls(soulid));
+    const keys = await pmap(this.settle(), (soulid) => store.getBoundKeySouls(soulid));
     return keys.flat(1);
   }
 
-  then (...args) {
-    return this.resolve().then(...args);
+  async exists () {
+    const souls = this.settle();
+    return !!souls.length;
   }
 
 }
 
-Query.prototype.BIND_RIGHT = BIND_RIGHT;
-Query.prototype.BIND_LEFT = BIND_LEFT;
-Query.prototype.BIND_UP = BIND_UP;
-Query.prototype.BIND_DOWN = BIND_DOWN;
+Query.prototype.BIND_EAST = BIND_EAST;
+Query.prototype.BIND_WEST = BIND_WEST;
+Query.prototype.BIND_NORTH = BIND_NORTH;
+Query.prototype.BIND_SOUTH = BIND_SOUTH;
 Query.prototype._isQuery = true;
 
-Query.create = (transaction, key, create = true) => new Query(transaction, [ [ FROM_ALIAS, key, create ] ]);
+Query.create = (transaction, key, create = false) => new Query(transaction, [ [ FROM_ALIAS, key, create ] ]);
 Query.isQuery = isQuery;
 Query.isArrayOfQueries = isArrayOfQueries;

@@ -1,5 +1,5 @@
 
-import { pmap } from './utils';
+import { pmap, isString, isFunction } from './utils';
 import { isSoulId, soulgen } from './ids';
 import { oppositeDirection } from './binding';
 
@@ -8,9 +8,7 @@ export const QUERY = 'QUERY';
 export const FROM_ALIAS = 'FROM_ALIAS';
 export const SET_ALIAS = 'SET_ALIAS';
 export const REMOVE_ALIAS = 'REMOVE_ALIAS';
-export const TRAVEL_IN_DIRECTION = 'TRAVEL_IN_DIRECTION';
-export const TRAVEL_TO_KEY = 'TRAVEL_TO_KEY';
-export const TRAVEL_FROM_KEY = 'TRAVEL_FROM_KEY';
+export const NAVIGATE = 'NAVIGATE';
 export const BIND = 'BIND';
 export const UNBIND = 'UNBIND';
 export const UNBIND_BY_KEY = 'UNBIND_BY_KEY';
@@ -25,7 +23,7 @@ export default {
   },
 
   async QUERY ({ qid, dependencies, souls }, queryToInclude) {
-    return souls.concat(await queryToInclude.resolve(qid, dependencies));
+    return souls.concat(await queryToInclude.settle(qid, dependencies));
   },
 
   async FROM_ALIAS ({ store, souls }, alias, createIfMissing) {
@@ -49,55 +47,45 @@ export default {
   },
 
   async REMOVE_ALIAS ({ store, souls }, key) {
-    await store.removeSoulAlias(key);
+    if (isString(key)) {
+      await store.removeSoulAlias(key);
+      return souls;
+    }
+
+    if (key === true) {
+      await pmap(souls, async (soulid) => store.clearAliases(soulid));
+    }
     return souls;
   },
 
-  async TRAVEL_IN_DIRECTION ({ store, souls }, direction, createIfMissing, key) {
+  async NAVIGATE ({ store, souls }, { direction, create, key, reverse } = {}) {
     return (await pmap(souls, async (soulid) => {
-      const boundSouls = await store.getBoundSouls(soulid, direction);
-      if (boundSouls.length) return boundSouls;
+      let boundSouls;
+      if (key) {
+        boundSouls = await store.getBoundSoul(soulid, key);
+        if (boundSouls) return boundSouls;
+      } else if (direction) {
+        boundSouls = await store.getBoundSouls(soulid, direction);
+        if (boundSouls.length) return boundSouls;
+      }
 
-      if (!createIfMissing) return [];
+      if (!create) return [];
 
       const newSoulID = await soulgen(store);
       await store.createSoul(newSoulID);
-      await store.bindSouls(soulid, newSoulID, { direction, key });
+      if (reverse) {
+        await store.bindSouls(newSoulID, soulid, { key, direction: oppositeDirection(direction) });
+      } else {
+        await store.bindSouls(soulid, newSoulID, { key, direction });
+      }
+      if (isFunction(create)) await create(newSoulID);
       return newSoulID;
     })).flat(Infinity).filter(isSoulId);
   },
 
-  async TRAVEL_TO_KEY ({ store, souls }, key, directionIfMissing) {
-    return await pmap(souls, async (soulid) => {
-      const boundSouls = await store.getBoundSoul(soulid, key);
-      if (boundSouls.length) return boundSouls;
-
-      if (!directionIfMissing) return [];
-
-      const newSoulID = await soulgen(store);
-      await store.createSoul(newSoulID);
-      await store.bindSouls(soulid, newSoulID, { direction: directionIfMissing, key });
-      return newSoulID;
-    }).flat(Infinity).filter(isSoulId);
-  },
-
-  async TRAVEL_FROM_KEY ({ store, souls }, key, directionIfMissing) {
-    return await pmap(souls, async (soulid) => {
-      const boundSoul = await store.getBoundSoul(soulid, key);
-      if (boundSoul) return boundSoul;
-
-      if (!directionIfMissing) return [];
-
-      const newSoulId = await soulgen(store);
-      await store.createSoul(soulid);
-      await store.bindSouls(newSoulId, soulid, { key, direction: oppositeDirection(directionIfMissing) });
-      return newSoulId;
-    }).flat(Infinity).filter(isSoulId);
-  },
-
   async BIND ({ qid, dependencies, store, souls }, query, direction, key) {
     // first we resolve all the queries into an array of souls
-    const soulsToLink = await query.resolve(qid, ...dependencies);
+    const soulsToLink = await query.settle(qid, ...dependencies);
 
     await pmap(souls, (startSoulId) =>
       pmap(soulsToLink, (endSoulId) => store.bindSouls(startSoulId, endSoulId, { direction, key })),
@@ -108,7 +96,7 @@ export default {
 
   async UNBIND ({ qid, dependencies, store, souls }, query, direction) {
     // first we resolve all the queries into an array of souls
-    const soulsToLink = query.resolve(qid, ...dependencies);
+    const soulsToLink = query.settle(qid, ...dependencies);
 
     await pmap(souls, (startSoulId) =>
       pmap(soulsToLink, (endSoulId) => store.unbindSouls(startSoulId, { soulid: endSoulId, direction })),

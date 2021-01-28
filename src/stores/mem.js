@@ -1,10 +1,10 @@
 
 import AbstractStore from './abstract';
 import {
-  BIND_RIGHT,
-  BIND_LEFT,
-  BIND_UP,
-  BIND_DOWN,
+  BIND_EAST,
+  BIND_WEST,
+  BIND_NORTH,
+  BIND_SOUTH,
   MOVEMENT,
   oppositeDirection,
   isValidDirection,
@@ -171,19 +171,19 @@ export default class MemStore extends AbstractStore {
   }
 
 
-  async bindSouls (startSoulId, endSoulId, { direction = BIND_RIGHT, key = null }) {
+  async bindSouls (startSoulId, endSoulId, { direction = BIND_SOUTH, key = null }) {
     await Promise.all([
       this._touchSoul(startSoulId),
       this._touchSoul(endSoulId),
     ]);
 
     const directions = MOVEMENT[direction];
-    assert(isValidDirection(direction), `Unknown binding direction, "${direction}".`);
+    assert(isValidDirection(direction), `Unknown binding direction, "${direction.trim()}".`);
     assert(startSoulId, 'Missing starting soul id.');
     assert(endSoulId, 'Missing ending soul id.');
 
-    const fromSet = new ManagedSet(this._cache, `${startSoulId}-${directions[0]}`);
-    const toSet   = new ManagedSet(this._cache, `${endSoulId  }-${directions[1]}`);
+    const fromSet = new ManagedSet(this._cache, `${startSoulId}-${directions[0].trim()}`);
+    const toSet   = new ManagedSet(this._cache, `${endSoulId  }-${directions[1].trim()}`);
 
     fromSet.add(endSoulId);
     toSet.add(startSoulId);
@@ -192,13 +192,13 @@ export default class MemStore extends AbstractStore {
       const soulToKey = new ManagedMap(this._cache, `${startSoulId}-TO_KEY`);
       const soulByKey = new ManagedMap(this._cache, `${startSoulId}-BY_KEY`);
 
-      soulToKey.set(endSoulId, [ key, direction ]);
-      soulByKey.set(key, [ endSoulId, direction ]);
+      soulToKey.set(endSoulId, [ key, direction.trim() ]);
+      soulByKey.set(key, [ endSoulId, direction.trim() ]);
     }
   }
 
-  async unbindSouls (startSoulId, { soulid: endSoulId = null, key = null, direction = BIND_RIGHT }) {
-    assert(isValidDirection(direction), `Unknown binding direction, "${direction}".`);
+  async unbindSouls (startSoulId, { soulid: endSoulId = null, key = null, direction = BIND_SOUTH }) {
+    assert(isValidDirection(direction), `Unknown binding direction, "${direction.trim}".`);
     assert(startSoulId, 'Missing starting soul id.');
     assert(endSoulId || key, 'Missing ending soul id or key.');
 
@@ -215,25 +215,25 @@ export default class MemStore extends AbstractStore {
     if (key) soulByKey.delete(key);
 
     const directions = MOVEMENT[direction];
-    const startSet = new ManagedSet(this._cache, `${startSoulId}-${directions[0]}`);
-    const endSet   = new ManagedSet(this._cache, `${endSoulId  }-${directions[1]}`);
+    const startSet = new ManagedSet(this._cache, `${startSoulId}-${directions[0].trim()}`);
+    const endSet   = new ManagedSet(this._cache, `${endSoulId  }-${directions[1].trim()}`);
 
     startSet.delete(endSoulId);
     endSet.delete(startSoulId);
   }
 
-  async getBoundSouls (startSoulId, direction = BIND_RIGHT) {
+  async getBoundSouls (startSoulId, direction = BIND_SOUTH) {
     const directions = MOVEMENT[direction];
-    assert(directions, `Unknown binding direction, "${direction}".`);
+    assert(directions, `Unknown binding direction, "${direction.trim()}".`);
 
-    const fromSet = new ManagedSet(this._cache, `${startSoulId}-${directions[0]}`);
+    const fromSet = new ManagedSet(this._cache, `${startSoulId}-${directions[0].trim()}`);
 
     return Array.from(fromSet);
   }
 
   async getBoundSoul (startSoulId, key) {
     const soulByKey = new ManagedMap(this._cache, `${startSoulId}-BY_KEY`);
-    const [ endSoulId ] = soulByKey.get(key);
+    const [ endSoulId ] = soulByKey.get(key) || [];
     return endSoulId;
   }
 
@@ -249,7 +249,7 @@ export default class MemStore extends AbstractStore {
 
 
   async clearSoulBindings (soulid, direction = 'ALL') {
-    if (direction === 'ALL') direction = [ BIND_LEFT, BIND_DOWN, BIND_RIGHT, BIND_UP ];
+    if (direction === 'ALL') direction = [ BIND_WEST, BIND_SOUTH, BIND_EAST, BIND_NORTH ];
     if (!isArray(direction)) direction = [ direction ];
     assert(areValidDirections(direction), 'One or more binding directions are unknown.');
 

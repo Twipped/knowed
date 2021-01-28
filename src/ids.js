@@ -13,7 +13,7 @@ export const soulgen = async (store) => {
   throw new Error('Somehow we have we hit soul entropy? This should not be possible.');
 };
 
-export const querygen = () => randomBytes(16).toString('hex').toUpperCase();
+export const querygen = () => randomBytes(8).toString('hex').toUpperCase();
 
 export const SOUL_ID_REGEX = /^SOUL-[0-9A-F]{32,42}$/;
 

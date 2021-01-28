@@ -9,7 +9,6 @@
     "require": "./dist/index.cjs.js",
     "default": "./dist/index.esm.js"
   },
-  "type": "module",
   "scripts": {
     "test": "tap -R base --no-coverage tests",
     "cover": "tap -R terse --coverage tests",
@@ -50,7 +49,6 @@
     "src"
   ],
   "dependencies": {
-    "fs-extra": "~9.1.0",
     "stream-json": "~1.7.1"
   },
   "babel": {

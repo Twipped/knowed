@@ -1,10 +1,10 @@
 
 import { isStore } from './stores/abstract';
 import {
-  BIND_RIGHT,
-  BIND_LEFT,
-  BIND_UP,
-  BIND_DOWN,
+  BIND_EAST,
+  BIND_WEST,
+  BIND_NORTH,
+  BIND_SOUTH,
 } from './binding';
 import Query from './query';
 
@@ -45,7 +45,7 @@ export default class Transaction {
 
 }
 
-Transaction.prototype.BIND_RIGHT = BIND_RIGHT;
-Transaction.prototype.BIND_LEFT = BIND_LEFT;
-Transaction.prototype.BIND_UP = BIND_UP;
-Transaction.prototype.BIND_DOWN = BIND_DOWN;
+Transaction.prototype.BIND_EAST = BIND_EAST;
+Transaction.prototype.BIND_WEST = BIND_WEST;
+Transaction.prototype.BIND_NORTH = BIND_NORTH;
+Transaction.prototype.BIND_SOUTH = BIND_SOUTH;

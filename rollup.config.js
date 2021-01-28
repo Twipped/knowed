@@ -29,7 +29,10 @@ const config = {
   external: [
     'crypto',
     'stream',
-    'fs-extra',
+    'fs',
+    'stream',
+    'path',
+    'util',
     'stream-json',
     'stream-json/streamers/StreamArray',
   ],
@@ -53,5 +56,4 @@ export default [
       format: 'esm',
     },
   },
-
 ];
