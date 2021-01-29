@@ -2,13 +2,8 @@
   "name": "knowed",
   "version": "0.2.0",
   "description": "Abstraction layer for rapid prototyping of graph database structures",
-  "main": "dist/index.cjs.js",
-  "module": "dist/index.esm.js",
-  "exports": {
-    "import": "./src/index.js",
-    "require": "./dist/index.cjs.js",
-    "default": "./dist/index.esm.js"
-  },
+  "main": "dist/index.cjs",
+  "module": "dist/index.mjs",
   "scripts": {
     "test": "tap -R base --no-coverage tests",
     "cover": "tap -R terse --coverage tests",

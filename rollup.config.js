@@ -43,7 +43,7 @@ export default [
     ...config,
     input: 'src/dist.js',
     output: {
-      file: 'dist/index.cjs.js',
+      file: 'dist/index.cjs',
       format: 'cjs',
       exports: 'default',
     },
@@ -52,7 +52,7 @@ export default [
     ...config,
     input: 'src/index.js',
     output: {
-      file: 'dist/index.esm.js',
+      file: 'dist/index.mjs',
       format: 'esm',
     },
   },
